@@ -19,6 +19,8 @@ test: $(BIN)
 	$(BUILD)/tests/test_buffer
 	$(CC) $(CFLAGS) tests/fuzz_buffer.c src/buffer.c -o $(BUILD)/tests/fuzz_buffer
 	$(BUILD)/tests/fuzz_buffer
+	$(CC) $(CFLAGS) tests/test_undo.c src/undo.c src/buffer.c -o $(BUILD)/tests/test_undo
+	$(BUILD)/tests/test_undo
 	@if command -v python3 >/dev/null; then python3 tests/pty_smoke.py; fi
 	@echo "ALL TESTS PASSED"
 

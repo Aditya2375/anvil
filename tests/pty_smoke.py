@@ -48,7 +48,10 @@ if os.path.exists(path):
     os.unlink(path)
 
 # type "hello", left x2, "X", backspace, enter, "world", ctrl-s, ctrl-q
-keys = b"hello\x1b[D\x1b[D" + b"X\x7f" + b"\x1b[F\rworld\x13\x11"
+keys = (b"hello\x1b[D\x1b[D" + b"X\x7f" + b"\x1b[F\rworld"
+        b"\x1b[D\x1b[C"      # break the typing run
+        b"junk\x1a"          # typed then undone with ctrl-z
+        b"\x13\x11")
 out = run(["build/anvil", path], keys, b"world")
 body = open(path, "rb").read()
 assert body == b"hello\nworld", f"file content wrong: {body!r}"

@@ -2,6 +2,7 @@
  * buffer core (open, edit, navigate, save, quit). The rest of the IDE
  * (file tree, highlighting, search, build runner) lands on top of this. */
 #include "buffer.h"
+#include "undo.h"
 
 #include <ctype.h>
 #include <signal.h>
@@ -53,6 +54,7 @@ static int raw_on(void) {
 
 struct editor {
     struct buffer *buf;
+    struct undo   *undo;
     const char    *path;
     int rows, cols;
     size_t rowoff, coloff;
@@ -173,23 +175,37 @@ static void move_to(struct editor *e, size_t line, size_t col) {
 static void process_key(struct editor *e, int k, int *quit) {
     size_t line = cur_line(e), col = cur_col(e);
     switch (k) {
-    case KEY_UP:    if (line) move_to(e, line - 1, col); break;
-    case KEY_DOWN:  move_to(e, line + 1, col); break;
+    case KEY_UP:    undo_break(e->undo); if (line) move_to(e, line - 1, col); break;
+    case KEY_DOWN:  undo_break(e->undo); move_to(e, line + 1, col); break;
     case KEY_LEFT:
+        undo_break(e->undo);
         if (col) move_to(e, line, col - 1);
         else if (line) move_to(e, line - 1, buffer_line_len(e->buf, line - 1));
         break;
     case KEY_RIGHT:
+        undo_break(e->undo);
         if (col < buffer_line_len(e->buf, line)) move_to(e, line, col + 1);
         else move_to(e, line + 1, 0);
         break;
-    case KEY_HOME:  move_to(e, line, 0); break;
-    case KEY_END:   move_to(e, line, (size_t)-1); break;
-    case KEY_PGUP:  move_to(e, line > (size_t)e->rows ? line - e->rows : 0, col); break;
-    case KEY_PGDN:  move_to(e, line + e->rows, col); break;
-    case KEY_DEL:   buffer_delete(e->buf, 1); break;
-    case 127: case 8: buffer_backspace(e->buf); break;
-    case '\r':      buffer_insert_char(e->buf, '\n'); break;
+    case KEY_HOME:  undo_break(e->undo); move_to(e, line, 0); break;
+    case KEY_END:   undo_break(e->undo); move_to(e, line, (size_t)-1); break;
+    case KEY_PGUP:  undo_break(e->undo); move_to(e, line > (size_t)e->rows ? line - e->rows : 0, col); break;
+    case KEY_PGDN:  undo_break(e->undo); move_to(e, line + e->rows, col); break;
+    case KEY_DEL:
+        undo_record_delete(e->undo, e->buf, buffer_cursor(e->buf), 1);
+        buffer_delete(e->buf, 1);
+        break;
+    case 127: case 8:
+        if (buffer_cursor(e->buf) > 0)
+            undo_record_delete(e->undo, e->buf, buffer_cursor(e->buf) - 1, 1);
+        buffer_backspace(e->buf);
+        break;
+    case 26: undo_undo(e->undo, e->buf); break;     /* ctrl-z */
+    case 18: undo_redo(e->undo, e->buf); break;     /* ctrl-r */
+    case '\r':
+        buffer_insert_char(e->buf, '\n');
+        undo_record_insert(e->undo, e->buf, buffer_cursor(e->buf) - 1, 1);
+        break;
     case 19: {      /* ctrl-s */
         char err[128] = {0};
         if (e->path && buffer_save(e->buf, e->path, err, sizeof err) != 0)
@@ -198,7 +214,10 @@ static void process_key(struct editor *e, int k, int *quit) {
     }
     case 17: *quit = 1; break;  /* ctrl-q */
     default:
-        if (isprint(k) || k == '\t') buffer_insert_char(e->buf, (char)k);
+        if (isprint(k) || k == '\t') {
+            buffer_insert_char(e->buf, (char)k);
+            undo_record_insert(e->undo, e->buf, buffer_cursor(e->buf) - 1, 1);
+        }
         break;
     }
 }
@@ -210,6 +229,7 @@ int main(int argc, char **argv) {
     }
     struct editor e = {0};
     e.buf = buffer_new();
+    e.undo = undo_new();
     e.path = argc == 2 ? argv[1] : "untitled";
     if (argc == 2) {
         char err[128];
@@ -234,6 +254,7 @@ int main(int argc, char **argv) {
         process_key(&e, k, &quit);
     }
     raw_off();
+    undo_free(e.undo);
     buffer_free(e.buf);
     return 0;
 }
