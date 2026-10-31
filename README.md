@@ -5,6 +5,8 @@ a file tree, syntax highlighting, project-wide search, and an integrated
 build/test runner - everything a small systems project needs, in one
 binary you can read end to end.
 
+**[Live demo](https://aditya2375.github.io/anvil/)** - the real editor recorded in a terminal under Xvfb (a browser tab has no pty to run it in).
+
 ## Status: early but editing
 
 - **Gap-buffer text core** (`src/buffer.c`): O(1) amortized insert and
